@@ -1,0 +1,6 @@
+{
+  "name": "bang-run",
+  "version": "0.1.0",
+  "description": "Adds a run button under every `! command` Claude suggests",
+  "author": { "name": "Mitja Kleider" }
+}

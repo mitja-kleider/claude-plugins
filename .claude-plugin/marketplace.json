@@ -1,0 +1,6 @@
+{
+  "name": "mitja-kleider-mods",
+  "owner": { "name": "Mitja Kleider" },
+  "description": "Mitja Kleider's Claude Code mods",
+  "plugins": [{ "name": "bang-run", "source": "./mods/bang-run" }]
+}
