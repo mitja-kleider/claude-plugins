@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Stop hook: before Claude finishes, run tests, check coverage of changed lines,
-# and flag newly added suppression comments. Only runs if .py files changed.
+# Stop hook: before Claude finishes, run tests, check coverage of the
+# uncommitted changes, and flag newly added suppression comments. Only runs if
+# .py files changed.
 set -uo pipefail
 
 input=$(cat)
@@ -13,49 +14,80 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 [[ -z "$(git status --porcelain -- '*.py')" ]] && exit 0
 
 MIN_DIFF_COV="${PY_GATE_MIN_DIFF_COVERAGE:-80}"
-problems=""
+EMPTY_TREE=4b825dc642cb6eb9a060e54bf8d69288fbee4904
+git_dir=$(git rev-parse --absolute-git-dir)
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
 
-# 1) Suppressions / test gaming added in the working tree vs HEAD
-added=$(git diff -U0 HEAD -- '*.py' | grep -E '^\+[^+].*(# *type: *ignore|# *noqa|pragma: *no cover|pytest\.mark\.skip|@skip)' || true)
-if [[ -n "$added" ]]; then
-  problems+=$'\n## New suppressions/skips (justify or remove)\n'"$added"$'\n'
-fi
-deleted_tests=$(git diff --name-only --diff-filter=D HEAD -- 'test*/**' '*test_*.py' '*_test.py' || true)
-if [[ -n "$deleted_tests" ]]; then
-  problems+=$'\n## Deleted test files (needs explicit user approval)\n'"$deleted_tests"$'\n'
-fi
+# Snapshot the working tree below the project dir (tracked, staged and
+# untracked files, respecting .gitignore) as a tree object, using a scratch
+# copy of the index so the real one is untouched. Every check below compares
+# this snapshot against HEAD, or against the empty tree before the first commit.
+[[ -f "$git_dir/index" ]] && cp "$git_dir/index" "$work/index"
+GIT_INDEX_FILE="$work/index" git add -A -- . 2>/dev/null
+snapshot=$(GIT_INDEX_FILE="$work/index" git write-tree) || exit 0
+head=$(git rev-parse --verify --quiet HEAD)
+base="${head:-$EMPTY_TREE}"
+diff=(git diff --no-color --no-ext-diff --no-textconv "$base" "$snapshot")
 
-# 2) Tests + branch coverage, using the project's own environment
+# Pick the test runner from the project's own environment.
 has_tests=0
 [[ -d tests || -d test ]] && has_tests=1
 grep -qs '\[tool.pytest' pyproject.toml && has_tests=1
 [[ -f pytest.ini ]] && has_tests=1
-
+pytest_cmd=()
 if [[ $has_tests == 1 ]]; then
   if [[ -f uv.lock ]]; then
     pytest_cmd=(uv run --with pytest --with pytest-cov python -m pytest)
   elif [[ -x .venv/bin/python ]]; then
     pytest_cmd=(.venv/bin/python -m pytest)
-  else
-    pytest_cmd=()
   fi
+fi
 
-  if (( ${#pytest_cmd[@]} )); then
-    rm -f coverage.xml
-    if ! out=$("${pytest_cmd[@]}" -q -x --cov --cov-branch --cov-report=xml 2>&1); then
-      problems+=$'\n## Tests failing\n'"$(tail -n 50 <<<"$out")"$'\n'
-    elif [[ -f coverage.xml ]]; then
-      base=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || echo HEAD)
-      if ! out=$(uvx diff-cover coverage.xml --compare-branch="$base" \
-                 --include-untracked --fail-under="$MIN_DIFF_COV" 2>&1); then
-        problems+=$'\n## Coverage of changed lines below '"$MIN_DIFF_COV"$'%\n'"$(tail -n 30 <<<"$out")"$'\n'
-      fi
+# Skip the gate when nothing that decides its result changed since it last
+# passed for this project dir: the snapshot, HEAD, the threshold and the runner.
+stamp_dir="$git_dir/py-gate"
+stamp="$stamp_dir/$(printf '%s' "$PWD" | git hash-object --stdin)"
+fingerprint=$(printf '%s\n' "$snapshot" "$head" "$MIN_DIFF_COV" "${pytest_cmd[*]:-}" | git hash-object --stdin)
+[[ -f "$stamp" && "$(<"$stamp")" == "$fingerprint" ]] && exit 0
+
+problems=""
+
+# 1) Suppressions / test gaming added since HEAD
+added=$("${diff[@]}" -U0 -- '*.py' | grep -E '^\+[^+].*(# *type: *ignore|# *noqa|pragma: *no cover|pytest\.mark\.skip|@skip)' || true)
+if [[ -n "$added" ]]; then
+  problems+=$'\n## New suppressions/skips (justify or remove)\n'"$added"$'\n'
+fi
+deleted_tests=$("${diff[@]}" --name-only --diff-filter=D -- 'test*/**' '*test_*.py' '*_test.py' || true)
+if [[ -n "$deleted_tests" ]]; then
+  problems+=$'\n## Deleted test files (needs explicit user approval)\n'"$deleted_tests"$'\n'
+fi
+
+# 2) Tests + branch coverage. Coverage data, bytecode and the pytest cache stay
+# out of the project, so its files (including a coverage.xml of its own) are
+# untouched and the next snapshot only differs if the project itself changed.
+if (( ${#pytest_cmd[@]} )); then
+  cov_xml="$work/coverage.xml"
+  if ! out=$(COVERAGE_FILE="$work/.coverage" PYTHONDONTWRITEBYTECODE=1 \
+             "${pytest_cmd[@]}" -q -x -p no:cacheprovider \
+             --cov --cov-branch --cov-report="xml:$cov_xml" 2>&1); then
+    problems+=$'\n## Tests failing\n'"$(tail -n 50 <<<"$out")"$'\n'
+  elif [[ -f "$cov_xml" && -n "$head" ]]; then
+    if ! out=$(uvx diff-cover "$cov_xml" --compare-branch=HEAD \
+               --include-untracked --fail-under="$MIN_DIFF_COV" 2>&1); then
+      problems+=$'\n## Coverage of changed lines below '"$MIN_DIFF_COV"$'%\n'"$(tail -n 30 <<<"$out")"$'\n'
     fi
   fi
 fi
 
 if [[ -n "$problems" ]]; then
+  rm -f "$stamp"
   echo "Not done yet — the Python quality gate found issues:$problems" >&2
   exit 2
+fi
+# Only remember a pass when the tests ran, or the project has none.
+if [[ $has_tests == 0 ]] || (( ${#pytest_cmd[@]} )); then
+  mkdir -p "$stamp_dir"
+  echo "$fingerprint" >"$stamp"
 fi
 exit 0
