@@ -1,5 +1,5 @@
 {
-  "name": "mitja-kleider-mods",
+  "name": "mitja-kleider-plugins",
   "owner": { "name": "Mitja Kleider" },
   "description": "Mitja Kleider's Claude Code mods and plugins",
   "plugins": [
