@@ -44,8 +44,9 @@ if [[ $has_tests == 1 ]]; then
   fi
 fi
 
-# Skip the gate when nothing that decides its result changed since it last
-# passed for this project dir: the snapshot, HEAD, the threshold and the runner.
+# Skip the gate when nothing that decides its result changed since it last ran
+# for this project dir: the snapshot, HEAD, the threshold and the runner. A
+# failure is reported once; re-running it unchanged only repeats it.
 stamp_dir="$git_dir/py-gate"
 stamp="$stamp_dir/$(printf '%s' "$PWD" | git hash-object --stdin)"
 fingerprint=$(printf '%s\n' "$snapshot" "$head" "$MIN_DIFF_COV" "${pytest_cmd[*]:-}" | git hash-object --stdin)
@@ -80,14 +81,13 @@ if (( ${#pytest_cmd[@]} )); then
   fi
 fi
 
-if [[ -n "$problems" ]]; then
-  rm -f "$stamp"
-  echo "Not done yet — the Python quality gate found issues:$problems" >&2
-  exit 2
-fi
-# Only remember a pass when the tests ran, or the project has none.
+# Only remember a result when the tests ran, or the project has none.
 if [[ $has_tests == 0 ]] || (( ${#pytest_cmd[@]} )); then
   mkdir -p "$stamp_dir"
   echo "$fingerprint" >"$stamp"
+fi
+if [[ -n "$problems" ]]; then
+  echo "Not done yet — the Python quality gate found issues:$problems" >&2
+  exit 2
 fi
 exit 0

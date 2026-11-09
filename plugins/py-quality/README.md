@@ -36,11 +36,12 @@ Environment variables:
 
 Opt a single repo out with `touch .claude/no-py-gate`.
 
-## Pass cache
+## Result cache
 
-After the Stop gate passes, it records a fingerprint in `.git/py-gate/`
-(one file per project directory). The next Stop skips the gate if nothing
-that decides its result has changed: the working tree (including untracked,
-non-ignored files), `HEAD`, the coverage threshold and the test runner.
-Delete `.git/py-gate/` to force a rerun, for example after changing
+After the Stop gate runs, pass or fail, it records a fingerprint in
+`.git/py-gate/` (one file per project directory). The next Stop skips the
+gate if nothing that decides its result has changed: the working tree
+(including untracked, non-ignored files), `HEAD`, the coverage threshold and
+the test runner. So a failure is reported once, not on every Stop until it is
+fixed. Delete `.git/py-gate/` to force a rerun, for example after changing
 something outside the repo that the tests depend on.
