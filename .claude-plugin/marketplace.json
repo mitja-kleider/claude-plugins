@@ -1,6 +1,13 @@
 {
   "name": "mitja-kleider-mods",
   "owner": { "name": "Mitja Kleider" },
-  "description": "Mitja Kleider's Claude Code mods",
-  "plugins": [{ "name": "bang-run", "source": "./mods/bang-run" }]
+  "description": "Mitja Kleider's Claude Code mods and plugins",
+  "plugins": [
+    { "name": "bang-run", "source": "./mods/bang-run" },
+    {
+      "name": "py-quality",
+      "source": "./plugins/py-quality",
+      "description": "Python quality gates (lint, complexity, types, tests, diff coverage) plus a quality report command"
+    }
+  ]
 }

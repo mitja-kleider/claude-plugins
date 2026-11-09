@@ -1,0 +1,7 @@
+{
+  "name": "py-quality",
+  "version": "0.1.0",
+  "description": "Automated Python quality gates (lint, complexity, types, tests, diff coverage) plus a deep quality report command",
+  "author": { "name": "Mitja Kleider" },
+  "license": "MIT"
+}

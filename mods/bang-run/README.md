@@ -12,5 +12,5 @@ terminal: interactive commands (`gcloud auth login`, `tsh login`) need to
 be typed with `!` yourself.
 
 ```
-/plugin install bang-run --marketplace mitja-kleider/claude-mods
+/plugin install bang-run --marketplace mitja-kleider/claude-plugins
 ```
