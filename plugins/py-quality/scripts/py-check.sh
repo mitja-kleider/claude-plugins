@@ -7,7 +7,14 @@ input=$(cat)
 file=$(jq -r '.tool_input.file_path // empty' <<<"$input")
 
 [[ -z "$file" || "$file" != *.py || ! -f "$file" ]] && exit 0
-proj="${CLAUDE_PROJECT_DIR:-$(dirname "$file")}"
+
+# Check the file against the project that owns it, which needn't be the
+# session's (e.g. another worktree). An inherited VIRTUAL_ENV would make ty
+# resolve imports in the session's venv instead of that project's .venv.
+unset VIRTUAL_ENV
+proj=$(dirname "$file")
+until [[ -f "$proj/pyproject.toml" || "$proj" == / ]]; do proj=$(dirname "$proj"); done
+[[ "$proj" == / ]] && proj="${CLAUDE_PROJECT_DIR:-$(dirname "$file")}"
 [[ -f "$proj/.claude/no-py-gate" ]] && exit 0   # per-project opt-out
 cd "$proj" || exit 0
 
@@ -27,7 +34,7 @@ if ! out=$(run ruff check --quiet --output-format concise \
   problems+=$'\n## ruff (lint/complexity)\n'"$out"
 fi
 
-# Type check this file. ty discovers the project's .venv for imports.
+# Type check this file. ty discovers the project's .venv from the cwd.
 # Swap for "pyright" or "pyrefly check" if you prefer.
 if [[ "${PY_GATE_TYPECHECK:-1}" == "1" ]]; then
   if ! out=$(run ty check "$file" 2>&1); then
