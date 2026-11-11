@@ -5,11 +5,15 @@ Python quality gates for Claude Code:
 - **SessionStart**: injects the quality rules from `RULES.md` into context
   (Python projects only).
 - **PostToolUse** (every `.py` edit): ruff lint, complexity and
-  blanket-suppression checks, plus a ty type check.
+  blanket-suppression checks, plus a ty type check. Only findings on lines
+  changed since `HEAD` count, and a complexity finding counts when any line
+  of its function changed. Unused imports and undefined names are reported
+  without blocking, since an import and its first use often take two edits.
 - **Stop**: when `.py` files have uncommitted changes, flags newly added
-  suppressions, skips and deleted tests, runs pytest with branch coverage,
-  and checks coverage of the uncommitted changes with diff-cover. Committed
-  code is not checked.
+  suppressions, skips and deleted tests, and unused imports or undefined
+  names on changed lines; runs pytest with branch coverage, and checks
+  coverage of the uncommitted changes with diff-cover. Committed code is not
+  checked.
 - **`/py-quality`**: an on-demand report (radon, hotspots, vulture, bandit,
   mutation testing).
 - **Skill `python-quality-tools`**: a reference of FOSS tools and when to use

@@ -64,6 +64,20 @@ if [[ -n "$deleted_tests" ]]; then
   problems+=$'\n## Deleted test files (needs explicit user approval)\n'"$deleted_tests"$'\n'
 fi
 
+# Unused imports and undefined names, which the per-edit check lets through
+# while an edit is unfinished, on the lines changed since HEAD.
+changed_py=()
+IFS=$'\n' read -r -d '' -a changed_py < <("${diff[@]}" --relative --name-only --diff-filter=d -- '*.py')
+if (( ${#changed_py[@]} )); then
+  ruff=(ruff)
+  command -v ruff >/dev/null 2>&1 || ruff=(uvx ruff)
+  unfinished=$("${ruff[@]}" check --quiet --output-format concise --select F401,F821 -- "${changed_py[@]}" 2>&1 \
+    | "$(dirname "${BASH_SOURCE[0]}")/changed_findings.py")
+  if [[ -n "$unfinished" ]]; then
+    problems+=$'\n## Unused imports or undefined names\n'"$unfinished"$'\n'
+  fi
+fi
+
 # 2) Tests + branch coverage. Coverage data, bytecode and the pytest cache stay
 # out of the project, so its files (including a coverage.xml of its own) are
 # untouched and the next snapshot only differs if the project itself changed.
